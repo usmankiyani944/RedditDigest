@@ -221,8 +221,12 @@ def search_reddit_direct_api(keyword, access_token, limit=10, force_refresh=Fals
         sort_method = 'new' if force_refresh else 'relevance'  # Changed from 'top' to 'relevance' for better matching
         time_filter = 'week' if force_refresh else 'year'      # Changed from 'month' to 'year' for better results
         
-        # Improve search query by adding quotes for better phrase matching
-        search_query = f'"{keyword}"' if ' ' in keyword else keyword
+        # Try different search strategies based on keyword
+        if force_refresh:
+            search_query = keyword  # Don't use quotes for latest results
+        else:
+            # For relevance search, try without quotes first for broader results
+            search_query = keyword
         
         params = {
             'q': search_query,
@@ -243,18 +247,32 @@ def search_reddit_direct_api(keyword, access_token, limit=10, force_refresh=Fals
         for post_data in data.get('data', {}).get('children', []):
             post = post_data.get('data', {})
             
-            # Get comments for this post
-            comments = get_post_comments_direct_api(post.get('id', ''), access_token)
+            # Filter for relevance even in primary search
+            title_lower = post.get('title', '').lower()
+            keyword_lower = keyword.lower()
+            keyword_words = [word.strip() for word in keyword_lower.split() if len(word.strip()) > 2]
             
-            posts.append({
-                'title': post.get('title', 'No title'),
-                'author': post.get('author', '[deleted]'),
-                'score': post.get('score', 0),
-                'subreddit': post.get('subreddit', 'unknown'),
-                'url': f"https://reddit.com{post.get('permalink', '')}",
-                'comments': comments[:3]  # Limit to 3 comments
-            })
+            # Calculate relevance
+            matches = sum(1 for word in keyword_words if word in title_lower)
+            relevance_ratio = matches / len(keyword_words) if keyword_words else 0
             
+            # Be more selective - only include highly relevant posts
+            if relevance_ratio >= 0.4 or any(term in title_lower for term in ['best', 'top', 'recommended', 'vs', 'comparison', 'review']):
+                # Get comments for this post
+                comments = get_post_comments_direct_api(post.get('id', ''), access_token)
+                
+                posts.append({
+                    'title': post.get('title', 'No title'),
+                    'author': post.get('author', '[deleted]'),
+                    'score': post.get('score', 0),
+                    'subreddit': post.get('subreddit', 'unknown'),
+                    'url': f"https://reddit.com{post.get('permalink', '')}",
+                    'comments': comments[:3],  # Limit to 3 comments
+                    'relevance_score': relevance_ratio
+                })
+        
+        # Sort by relevance score first, then by Reddit score
+        posts.sort(key=lambda x: (x.get('relevance_score', 0), x.get('score', 0)), reverse=True)
         return posts
     except Exception as e:
         logging.error(f"Direct API search failed: {str(e)}")
@@ -296,8 +314,16 @@ def search_reddit_direct_api_fallback(keyword, access_token, limit=10, force_ref
             title_lower = post.get('title', '').lower()
             keyword_lower = keyword.lower()
             
-            # Check if the post title contains relevant keywords
-            if any(word in title_lower for word in keyword_lower.split()):
+            # More sophisticated keyword matching
+            title_lower = post.get('title', '').lower()
+            keyword_words = [word.strip() for word in keyword_lower.split() if len(word.strip()) > 2]
+            
+            # Calculate relevance score - how many keywords are present
+            matches = sum(1 for word in keyword_words if word in title_lower)
+            relevance_ratio = matches / len(keyword_words) if keyword_words else 0
+            
+            # Only include posts with at least 50% keyword match or specific high-value terms
+            if relevance_ratio >= 0.5 or any(term in title_lower for term in ['best', 'top', 'recommended', 'comparison']):
                 # Get comments for this post
                 comments = get_post_comments_direct_api(post.get('id', ''), access_token)
                 
@@ -307,9 +333,12 @@ def search_reddit_direct_api_fallback(keyword, access_token, limit=10, force_ref
                     'score': post.get('score', 0),
                     'subreddit': post.get('subreddit', 'unknown'),
                     'url': f"https://reddit.com{post.get('permalink', '')}",
-                    'comments': comments[:3]  # Limit to 3 comments
+                    'comments': comments[:3],  # Limit to 3 comments
+                    'relevance_score': relevance_ratio
                 })
-                
+        
+        # Sort by relevance score and then by score
+        posts.sort(key=lambda x: (x.get('relevance_score', 0), x.get('score', 0)), reverse=True)
         return posts
     except Exception as e:
         logging.error(f"Fallback API search failed: {str(e)}")
