@@ -209,7 +209,7 @@ def extract_post_data(submission):
         return None
 
 
-def search_reddit_direct_api(keyword, access_token, limit=10):
+def search_reddit_direct_api(keyword, access_token, limit=10, force_refresh=False):
     """Search Reddit using authenticated API with access token"""
     try:
         search_url = "https://oauth.reddit.com/search"
@@ -217,11 +217,15 @@ def search_reddit_direct_api(keyword, access_token, limit=10):
             'Authorization': f'bearer {access_token}',
             'User-Agent': user_agent
         }
+        # Use different sorting based on force_refresh parameter
+        sort_method = 'new' if force_refresh else 'top'
+        time_filter = 'week' if force_refresh else 'month'
+        
         params = {
             'q': keyword,
-            'sort': 'top',
+            'sort': sort_method,
             'limit': limit,
-            't': 'all',
+            't': time_filter,
             'raw_json': 1
         }
         
@@ -348,16 +352,20 @@ def get_post_comments_direct_api(post_id, access_token, limit=10):
         logging.error(f"Failed to get comments: {str(e)}")
         return []
 
-def search_reddit_public_api(keyword, limit=10):
+def search_reddit_public_api(keyword, limit=10, force_refresh=False):
     """Search Reddit using public JSON API as fallback"""
     try:
         # Use Reddit's public search API
         search_url = f"https://www.reddit.com/search.json"
+        # Use different sorting based on force_refresh parameter
+        sort_method = 'new' if force_refresh else 'top'
+        time_filter = 'week' if force_refresh else 'all'
+        
         params = {
             'q': keyword,
-            'sort': 'top',
+            'sort': sort_method,
             'limit': limit,
-            't': 'all'
+            't': time_filter
         }
         
         headers = {'User-Agent': 'CommentsFetcher by /u/Real_Instance_7489'}
@@ -451,6 +459,7 @@ def search_keyword():
     try:
         data = request.get_json()
         keyword = data.get('keyword', '').strip()
+        force_refresh = data.get('force_refresh', False)
 
         if not keyword:
             return jsonify({'error': 'Keyword is required'}), 400
@@ -459,18 +468,19 @@ def search_keyword():
         if is_valid_reddit_url(keyword) or 'reddit.com' in keyword.lower() or keyword.startswith('http'):
             return jsonify({'error': 'This appears to be a URL. Please use the "Fetch by Thread URL" button instead.'}), 400
 
-        logging.info(f"Searching Reddit for keyword: {keyword}")
+        logging.info(f"Searching Reddit for keyword: {keyword} (force_refresh: {force_refresh})")
 
         # Use direct Reddit API with requests since PRAW is having issues
         if reddit_token:
             logging.info("Using direct Reddit API for search")
             try:
-                posts = search_reddit_direct_api(keyword, reddit_token, 10)
+                posts = search_reddit_direct_api(keyword, reddit_token, 10, force_refresh)
                 if posts:
                     return jsonify({
                         'success': True,
                         'posts': posts,
-                        'count': len(posts)
+                        'count': len(posts),
+                        'refresh_mode': 'latest' if force_refresh else 'top'
                     })
                 else:
                     return jsonify({'error': f'No posts found for keyword: {keyword}'}), 404

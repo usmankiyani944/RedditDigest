@@ -7,6 +7,7 @@ class RedditFetcher {
         // Get DOM elements
         this.searchInput = document.getElementById('searchInput');
         this.brandNameInput = document.getElementById('brandNameInput');
+        this.hardRefreshCheck = document.getElementById('hardRefreshCheck');
         this.searchKeywordBtn = document.getElementById('searchKeywordBtn');
         this.fetchUrlBtn = document.getElementById('fetchUrlBtn');
         this.loadingIndicator = document.getElementById('loadingIndicator');
@@ -58,8 +59,10 @@ class RedditFetcher {
         this.errorContainer.style.display = 'none';
         
         if (isSearch) {
-            this.resultsTitle.innerHTML = '<i class="fas fa-list me-2"></i>Search Results';
-            this.resultsCount.textContent = `Found ${data.count} posts`;
+            const refreshMode = data.refresh_mode || '';
+            const refreshText = refreshMode === 'latest' ? ' (Latest Results)' : '';
+            this.resultsTitle.innerHTML = `<i class="fas fa-list me-2"></i>Search Results${refreshText}`;
+            this.resultsCount.textContent = `Found ${data.count} posts${refreshMode === 'latest' ? ' from this week' : ''}`;
             this.renderPosts(data.posts);
         } else {
             this.resultsTitle.innerHTML = '<i class="fas fa-link me-2"></i>Thread Details';
@@ -188,6 +191,7 @@ class RedditFetcher {
 
     async searchByKeyword() {
         const keyword = this.searchInput.value.trim();
+        const forceRefresh = this.hardRefreshCheck.checked;
         
         if (!keyword) {
             this.showError('Please enter a keyword to search');
@@ -208,7 +212,10 @@ class RedditFetcher {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ keyword })
+                body: JSON.stringify({ 
+                    keyword: keyword,
+                    force_refresh: forceRefresh
+                })
             });
 
             const data = await response.json();

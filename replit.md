@@ -144,5 +144,9 @@ Current Reddit API credentials are properly configured:
 - ✅ **UI ENHANCEMENT**: Added "Generate Reply" buttons for each comment and main post
 - ✅ **BUG FIX**: Fixed JavaScript syntax errors causing browser console issues
 - ✅ **BUG FIX**: Results now properly refresh/clear between new searches
+- ✅ **NEW FEATURE**: Added hard refresh option to show latest results only
+- ✅ **IMPROVEMENT**: Search now prioritizes recent posts when hard refresh is enabled
+- ✅ **UI ENHANCEMENT**: Added checkbox to toggle between top-rated and latest posts
+- ✅ **MIGRATION**: Successfully migrated from Replit Agent to standard Replit environment
 - ✅ **DOCUMENTATION**: Created comprehensive PROJECT_SETUP_INSTRUCTIONS.md
 - All core features functional (Reddit API + Gemini AI + Brand Integration working perfectly)
