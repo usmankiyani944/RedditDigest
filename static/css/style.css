@@ -1,0 +1,114 @@
+/* Custom styles for Reddit Fetcher */
+
+.card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+.comments-section {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.comments-section::-webkit-scrollbar {
+    width: 4px;
+}
+
+.comments-section::-webkit-scrollbar-track {
+    background: var(--bs-dark);
+}
+
+.comments-section::-webkit-scrollbar-thumb {
+    background: var(--bs-secondary);
+    border-radius: 2px;
+}
+
+.comments-section::-webkit-scrollbar-thumb:hover {
+    background: var(--bs-info);
+}
+
+/* Loading animation */
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.spinner-border {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Button hover effects */
+.btn:hover {
+    transform: translateY(-1px);
+    transition: transform 0.2s ease-in-out;
+}
+
+/* Post title links */
+.card-title a {
+    color: inherit;
+}
+
+.card-title a:hover {
+    color: var(--bs-info);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .display-4 {
+        font-size: 2rem;
+    }
+    
+    .btn-lg {
+        font-size: 1rem;
+        padding: 0.75rem 1.5rem;
+    }
+    
+    .d-md-flex {
+        flex-direction: column;
+    }
+    
+    .d-md-flex .btn {
+        margin-bottom: 0.5rem;
+    }
+}
+
+/* Error state styling */
+.alert-danger {
+    border-left: 4px solid var(--bs-danger);
+}
+
+/* Results styling */
+#resultsContainer {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Badge styling */
+.badge {
+    font-size: 0.8em;
+}
+
+/* Comments border styling */
+.border-start {
+    border-width: 3px !important;
+}

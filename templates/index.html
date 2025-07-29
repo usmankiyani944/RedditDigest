@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Posts & Comments Fetcher</title>
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="container py-5">
+        <!-- Header -->
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h1 class="display-4 mb-3">
+                    <i class="fab fa-reddit-alien me-3"></i>
+                    Reddit Posts & Comments Fetcher
+                </h1>
+                <p class="lead text-muted">Search Reddit posts by keyword or fetch specific threads by URL</p>
+            </div>
+        </div>
+
+        <!-- Search Form -->
+        <div class="row justify-content-center mb-5">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        <form id="searchForm">
+                            <div class="mb-4">
+                                <label for="searchInput" class="form-label">
+                                    <i class="fas fa-search me-2"></i>
+                                    Enter keyword or Reddit URL
+                                </label>
+                                <input type="text" 
+                                       class="form-control form-control-lg" 
+                                       id="searchInput" 
+                                       placeholder="e.g., 'python programming' or 'https://reddit.com/r/programming/comments/...'"
+                                       required>
+                                <div class="form-text">
+                                    Enter a keyword to search Reddit posts, or paste a direct Reddit post URL
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                                <button type="button" class="btn btn-secondary btn-lg" id="searchKeywordBtn">
+                                    <i class="fas fa-search me-2"></i>
+                                    Search by Keyword
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-lg" id="fetchUrlBtn">
+                                    <i class="fas fa-link me-2"></i>
+                                    Fetch by Thread URL
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="text-center mb-4" style="display: none;">
+            <div class="spinner-border text-secondary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2 text-muted">Fetching Reddit data...</p>
+        </div>
+
+        <!-- Error Messages -->
+        <div id="errorContainer" style="display: none;">
+            <div class="alert alert-danger" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <span id="errorMessage"></span>
+            </div>
+        </div>
+
+        <!-- Results Container -->
+        <div id="resultsContainer" style="display: none;">
+            <div class="row mb-3">
+                <div class="col-12">
+                    <h3 id="resultsTitle">
+                        <i class="fas fa-list me-2"></i>
+                        Results
+                    </h3>
+                    <p id="resultsCount" class="text-muted"></p>
+                </div>
+            </div>
+            <div id="postsContainer"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
