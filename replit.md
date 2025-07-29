@@ -133,11 +133,16 @@ Current Reddit API credentials are properly configured:
 - Added hybrid approach using both PRAW and requests library
 - Implemented comprehensive error handling and fallback mechanisms
 - Resolved credential formatting issues in environment variables
-- ✅ **ENHANCED**: Updated to show top 5 most upvoted comments (instead of 3)
+- ✅ **ENHANCED**: Updated to show top 10 most upvoted comments (instead of 5)
 - ✅ **NEW FEATURE**: Added AI-powered reply generation using sentiment/emotion analysis
 - ✅ **NEW FEATURE**: Integrated Gemini API for intelligent reply generation
 - ✅ **NEW FEATURE**: Added sentiment analysis using RapidAPI Twinword services
 - ✅ **NEW FEATURE**: Added regeneration capability for replies
+- ✅ **NEW FEATURE**: Added optional brand name integration in AI replies
+- ✅ **NEW FEATURE**: Added main post reply functionality (not just comments)
 - ✅ **UI ENHANCEMENT**: Comments now display upvote scores with visual indicators
-- ✅ **UI ENHANCEMENT**: Added "Generate Reply" buttons for each comment
-- All core features functional (Reddit API + Gemini AI working perfectly)
+- ✅ **UI ENHANCEMENT**: Added "Generate Reply" buttons for each comment and main post
+- ✅ **BUG FIX**: Fixed JavaScript syntax errors causing browser console issues
+- ✅ **BUG FIX**: Results now properly refresh/clear between new searches
+- ✅ **DOCUMENTATION**: Created comprehensive PROJECT_SETUP_INSTRUCTIONS.md
+- All core features functional (Reddit API + Gemini AI + Brand Integration working perfectly)

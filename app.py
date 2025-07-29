@@ -73,7 +73,7 @@ def analyze_emotion(text):
         logging.error(f"Emotion analysis failed: {str(e)}")
         return {"emotions_detected": [{"emotion": "neutral", "score": 0.5}]}
 
-def generate_reply_with_gemini(comment_text, sentiment_data, emotion_data):
+def generate_reply_with_gemini(comment_text, sentiment_data, emotion_data, brand_name=None, is_main_post=False):
     """Generate a reply using Gemini API based on sentiment and emotion analysis"""
     try:
         # Extract key insights from analyses
@@ -84,11 +84,19 @@ def generate_reply_with_gemini(comment_text, sentiment_data, emotion_data):
         primary_emotion = emotions[0]["emotion"] if emotions else "neutral"
         emotion_score = emotions[0]["score"] if emotions else 0.5
         
+        # Determine content type
+        content_type = "main post" if is_main_post else "comment"
+        
+        # Build brand context
+        brand_context = ""
+        if brand_name:
+            brand_context = f"\n\nBrand Integration:\n- Naturally mention '{brand_name}' in your reply when relevant, but don't force it\n- If the content relates to your brand's domain, you can share insights from {brand_name}'s perspective\n- Keep the brand mention subtle and valuable, not promotional"
+        
         # Create a comprehensive prompt
         prompt = f"""
-You are an AI assistant helping to generate thoughtful Reddit replies. Based on the sentiment and emotion analysis below, create an appropriate response to this comment:
+You are an AI assistant helping to generate thoughtful Reddit replies. Based on the sentiment and emotion analysis below, create an appropriate response to this {content_type}:
 
-Original Comment: "{comment_text}"
+Original {content_type.title()}: "{comment_text}"
 
 Sentiment Analysis:
 - Type: {sentiment_type}
@@ -96,16 +104,17 @@ Sentiment Analysis:
 
 Emotion Analysis:
 - Primary Emotion: {primary_emotion}
-- Confidence: {emotion_score}
+- Confidence: {emotion_score}{brand_context}
 
 Instructions:
-1. Match the tone appropriately - if the comment is positive, be encouraging; if negative, be empathetic
+1. Match the tone appropriately - if the {content_type} is positive, be encouraging; if negative, be empathetic
 2. Keep the reply conversational and natural, like a real Reddit user would write
 3. Be helpful and add value to the discussion
 4. Keep it concise (2-3 sentences max)
 5. Avoid being overly formal or robotic
-6. If the comment expresses frustration, acknowledge it and offer support
-7. If the comment is excited/happy, share in their enthusiasm
+6. If the {content_type} expresses frustration, acknowledge it and offer support
+7. If the {content_type} is excited/happy, share in their enthusiasm
+8. {'For main posts, you can ask follow-up questions or share related insights' if is_main_post else 'For comments, build on the conversation naturally'}
 
 Generate a genuine, helpful reply:
 """
@@ -251,7 +260,7 @@ def get_single_post_direct_api(post_id, access_token):
             'User-Agent': user_agent
         }
         params = {
-            'limit': 5,
+            'limit': 10,
             'sort': 'top',
             'raw_json': 1
         }
@@ -269,7 +278,7 @@ def get_single_post_direct_api(post_id, access_token):
             if len(data) > 1 and 'data' in data[1]:
                 comment_data = data[1]['data'].get('children', [])
                 
-                for comment_item in comment_data[:5]:
+                for comment_item in comment_data[:10]:
                     comment = comment_item.get('data', {})
                     if comment.get('body') and comment.get('author'):
                         body = comment.get('body', '')
@@ -296,7 +305,7 @@ def get_single_post_direct_api(post_id, access_token):
         logging.error(f"Failed to get single post: {str(e)}")
         return None
 
-def get_post_comments_direct_api(post_id, access_token, limit=5):
+def get_post_comments_direct_api(post_id, access_token, limit=10):
     """Get comments using authenticated API"""
     try:
         if not post_id:
@@ -548,6 +557,8 @@ def generate_reply():
     try:
         data = request.get_json()
         comment_text = data.get('comment_text', '').strip()
+        brand_name = data.get('brand_name', '').strip()
+        is_main_post = data.get('is_main_post', False)
         
         if not comment_text:
             return jsonify({'error': 'Comment text is required'}), 400
@@ -555,20 +566,22 @@ def generate_reply():
         if not rapidapi_key:
             return jsonify({'error': 'RapidAPI key not configured'}), 500
             
-        logging.info(f"Generating reply for comment: {comment_text[:100]}...")
+        content_type = "main post" if is_main_post else "comment"
+        logging.info(f"Generating reply for {content_type}: {comment_text[:100]}...")
         
         # Analyze sentiment and emotion
         sentiment_data = analyze_sentiment(comment_text)
         emotion_data = analyze_emotion(comment_text)
         
         # Generate reply using Gemini
-        reply = generate_reply_with_gemini(comment_text, sentiment_data, emotion_data)
+        reply = generate_reply_with_gemini(comment_text, sentiment_data, emotion_data, brand_name, is_main_post)
         
         return jsonify({
             'success': True,
             'reply': reply,
             'sentiment': sentiment_data,
-            'emotion': emotion_data
+            'emotion': emotion_data,
+            'brand_used': bool(brand_name)
         })
         
     except Exception as e:

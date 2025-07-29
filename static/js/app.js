@@ -6,6 +6,7 @@ class RedditFetcher {
     init() {
         // Get DOM elements
         this.searchInput = document.getElementById('searchInput');
+        this.brandNameInput = document.getElementById('brandNameInput');
         this.searchKeywordBtn = document.getElementById('searchKeywordBtn');
         this.fetchUrlBtn = document.getElementById('fetchUrlBtn');
         this.loadingIndicator = document.getElementById('loadingIndicator');
@@ -35,6 +36,8 @@ class RedditFetcher {
         this.resultsContainer.style.display = 'none';
         this.searchKeywordBtn.disabled = true;
         this.fetchUrlBtn.disabled = true;
+        // Clear previous results to show fresh data
+        this.postsContainer.innerHTML = '';
     }
 
     hideLoading() {
@@ -68,6 +71,7 @@ class RedditFetcher {
     }
 
     renderPosts(posts) {
+        // Clear previous results completely
         this.postsContainer.innerHTML = '';
         
         posts.forEach((post, index) => {
@@ -93,7 +97,7 @@ class RedditFetcher {
                         <div class="d-flex align-items-center">
                             <i class="fas fa-arrow-up me-1 text-success"></i>
                             <span class="badge bg-success me-2">${comment.score || 0}</span>
-                            <button class="btn btn-outline-primary btn-sm" onclick="redditFetcher.generateReply('${this.escapeHtml(comment.body).replace(/'/g, "\\'")}', ${index}, ${commentIndex})">
+                            <button class="btn btn-outline-primary btn-sm" onclick="redditFetcher.generateReply(\`${comment.body.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`, ${index}, ${commentIndex})">
                                 <i class="fas fa-reply me-1"></i>
                                 Generate Reply
                             </button>
@@ -104,7 +108,7 @@ class RedditFetcher {
                         <div class="alert alert-info">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <strong><i class="fas fa-robot me-2"></i>AI Generated Reply:</strong>
-                                <button class="btn btn-outline-secondary btn-sm" onclick="redditFetcher.regenerateReply('${this.escapeHtml(comment.body).replace(/'/g, "\\'")}', ${index}, ${commentIndex})">
+                                <button class="btn btn-outline-secondary btn-sm" onclick="redditFetcher.regenerateReply(\`${comment.body.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`, ${index}, ${commentIndex})">
                                     <i class="fas fa-redo me-1"></i>
                                     Regenerate
                                 </button>
@@ -141,10 +145,30 @@ class RedditFetcher {
                     </a>
                 </h5>
                 
+                <div class="mt-3 mb-4">
+                    <button class="btn btn-primary" onclick="redditFetcher.generateMainPostReply(\`${post.title.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`, ${index})">
+                        <i class="fas fa-reply me-1"></i>
+                        Generate Reply to Main Post
+                    </button>
+                    <div id="main-reply-container-${index}" class="mt-3" style="display: none;">
+                        <div class="alert alert-success">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong><i class="fas fa-robot me-2"></i>AI Reply to Main Post:</strong>
+                                <button class="btn btn-outline-success btn-sm" onclick="redditFetcher.regenerateMainPostReply(\`${post.title.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`, ${index})">
+                                    <i class="fas fa-redo me-1"></i>
+                                    Regenerate
+                                </button>
+                            </div>
+                            <div id="main-reply-content-${index}"></div>
+                            <div id="main-reply-analysis-${index}" class="mt-2 small text-muted"></div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="mt-4">
                     <h6 class="text-muted mb-3">
                         <i class="fas fa-comments me-2"></i>
-                        Top 5 Most Upvoted Comments (${post.comments ? post.comments.length : 0})
+                        Top 10 Most Upvoted Comments (${post.comments ? post.comments.length : 0})
                     </h6>
                     <div class="comments-section">
                         ${commentsHtml}
@@ -250,12 +274,18 @@ class RedditFetcher {
         replyContainer.style.display = 'block';
         
         try {
+            const brandName = this.brandNameInput.value.trim();
+            
             const response = await fetch('/generate-reply', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ comment_text: commentText })
+                body: JSON.stringify({ 
+                    comment_text: commentText,
+                    brand_name: brandName,
+                    is_main_post: false
+                })
             });
 
             const data = await response.json();
@@ -274,6 +304,8 @@ class RedditFetcher {
                 ? emotion.emotions_detected[0].emotion 
                 : 'neutral';
             
+            const brandUsed = data.brand_used ? `<div class="col-md-12"><span class="badge bg-warning">Brand "${brandName}" integrated</span></div>` : '';
+            
             replyAnalysis.innerHTML = `
                 <div class="row">
                     <div class="col-md-6">
@@ -286,6 +318,7 @@ class RedditFetcher {
                         <strong>Primary Emotion:</strong> 
                         <span class="badge bg-info">${primaryEmotion}</span>
                     </div>
+                    ${brandUsed}
                 </div>
             `;
 
@@ -295,9 +328,78 @@ class RedditFetcher {
         }
     }
 
+    async generateMainPostReply(postTitle, postIndex) {
+        const replyContainer = document.getElementById(`main-reply-container-${postIndex}`);
+        const replyContent = document.getElementById(`main-reply-content-${postIndex}`);
+        const replyAnalysis = document.getElementById(`main-reply-analysis-${postIndex}`);
+        
+        // Show loading state
+        replyContent.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div>Generating reply to main post...';
+        replyContainer.style.display = 'block';
+        
+        try {
+            const brandName = this.brandNameInput.value.trim();
+            
+            const response = await fetch('/generate-reply', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    comment_text: postTitle,
+                    brand_name: brandName,
+                    is_main_post: true
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to generate reply');
+            }
+
+            // Display the generated reply
+            replyContent.innerHTML = `<p class="mb-0">${this.escapeHtml(data.reply)}</p>`;
+            
+            // Display analysis information
+            const sentiment = data.sentiment || {};
+            const emotion = data.emotion || {};
+            const primaryEmotion = emotion.emotions_detected && emotion.emotions_detected.length > 0 
+                ? emotion.emotions_detected[0].emotion 
+                : 'neutral';
+            
+            const brandUsed = data.brand_used ? `<div class="col-md-12"><span class="badge bg-warning">Brand "${brandName}" integrated</span></div>` : '';
+            
+            replyAnalysis.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Sentiment:</strong> 
+                        <span class="badge bg-${sentiment.type === 'positive' ? 'success' : sentiment.type === 'negative' ? 'danger' : 'secondary'}">
+                            ${sentiment.type || 'neutral'} (${(sentiment.score || 0).toFixed(2)})
+                        </span>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Primary Emotion:</strong> 
+                        <span class="badge bg-info">${primaryEmotion}</span>
+                    </div>
+                    ${brandUsed}
+                </div>
+            `;
+
+        } catch (error) {
+            console.error('Main post reply generation error:', error);
+            replyContent.innerHTML = `<div class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>Failed to generate reply: ${error.message}</div>`;
+        }
+    }
+
     async regenerateReply(commentText, postIndex, commentIndex) {
         // Simply call generateReply again to get a new response
         await this.generateReply(commentText, postIndex, commentIndex);
+    }
+
+    async regenerateMainPostReply(postTitle, postIndex) {
+        // Simply call generateMainPostReply again to get a new response
+        await this.generateMainPostReply(postTitle, postIndex);
     }
 }
 
