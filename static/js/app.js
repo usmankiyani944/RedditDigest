@@ -83,13 +83,36 @@ class RedditFetcher {
         // Create comments HTML
         let commentsHtml = '';
         if (post.comments && post.comments.length > 0) {
-            commentsHtml = post.comments.map(comment => `
-                <div class="border-start border-secondary ps-3 mb-2">
-                    <small class="text-muted">
-                        <i class="fas fa-user me-1"></i>
-                        ${this.escapeHtml(comment.author)}
-                    </small>
+            commentsHtml = post.comments.map((comment, commentIndex) => `
+                <div class="border-start border-secondary ps-3 mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <small class="text-muted">
+                            <i class="fas fa-user me-1"></i>
+                            ${this.escapeHtml(comment.author)}
+                        </small>
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-arrow-up me-1 text-success"></i>
+                            <span class="badge bg-success me-2">${comment.score || 0}</span>
+                            <button class="btn btn-outline-primary btn-sm" onclick="redditFetcher.generateReply('${this.escapeHtml(comment.body).replace(/'/g, "\\'")}', ${index}, ${commentIndex})">
+                                <i class="fas fa-reply me-1"></i>
+                                Generate Reply
+                            </button>
+                        </div>
+                    </div>
                     <p class="mb-0 mt-1">${this.escapeHtml(comment.body)}</p>
+                    <div id="reply-container-${index}-${commentIndex}" class="mt-2" style="display: none;">
+                        <div class="alert alert-info">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong><i class="fas fa-robot me-2"></i>AI Generated Reply:</strong>
+                                <button class="btn btn-outline-secondary btn-sm" onclick="redditFetcher.regenerateReply('${this.escapeHtml(comment.body).replace(/'/g, "\\'")}', ${index}, ${commentIndex})">
+                                    <i class="fas fa-redo me-1"></i>
+                                    Regenerate
+                                </button>
+                            </div>
+                            <div id="reply-content-${index}-${commentIndex}"></div>
+                            <div id="reply-analysis-${index}-${commentIndex}" class="mt-2 small text-muted"></div>
+                        </div>
+                    </div>
                 </div>
             `).join('');
         } else {
@@ -121,7 +144,7 @@ class RedditFetcher {
                 <div class="mt-4">
                     <h6 class="text-muted mb-3">
                         <i class="fas fa-comments me-2"></i>
-                        Top Comments (${post.comments ? post.comments.length : 0})
+                        Top 5 Most Upvoted Comments (${post.comments ? post.comments.length : 0})
                     </h6>
                     <div class="comments-section">
                         ${commentsHtml}
@@ -216,9 +239,72 @@ class RedditFetcher {
             this.showError(`Fetch failed: ${error.message}`);
         }
     }
+
+    async generateReply(commentText, postIndex, commentIndex) {
+        const replyContainer = document.getElementById(`reply-container-${postIndex}-${commentIndex}`);
+        const replyContent = document.getElementById(`reply-content-${postIndex}-${commentIndex}`);
+        const replyAnalysis = document.getElementById(`reply-analysis-${postIndex}-${commentIndex}`);
+        
+        // Show loading state
+        replyContent.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div>Generating reply...';
+        replyContainer.style.display = 'block';
+        
+        try {
+            const response = await fetch('/generate-reply', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ comment_text: commentText })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to generate reply');
+            }
+
+            // Display the generated reply
+            replyContent.innerHTML = `<p class="mb-0">${this.escapeHtml(data.reply)}</p>`;
+            
+            // Display analysis information
+            const sentiment = data.sentiment || {};
+            const emotion = data.emotion || {};
+            const primaryEmotion = emotion.emotions_detected && emotion.emotions_detected.length > 0 
+                ? emotion.emotions_detected[0].emotion 
+                : 'neutral';
+            
+            replyAnalysis.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Sentiment:</strong> 
+                        <span class="badge bg-${sentiment.type === 'positive' ? 'success' : sentiment.type === 'negative' ? 'danger' : 'secondary'}">
+                            ${sentiment.type || 'neutral'} (${(sentiment.score || 0).toFixed(2)})
+                        </span>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Primary Emotion:</strong> 
+                        <span class="badge bg-info">${primaryEmotion}</span>
+                    </div>
+                </div>
+            `;
+
+        } catch (error) {
+            console.error('Reply generation error:', error);
+            replyContent.innerHTML = `<div class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>Failed to generate reply: ${error.message}</div>`;
+        }
+    }
+
+    async regenerateReply(commentText, postIndex, commentIndex) {
+        // Simply call generateReply again to get a new response
+        await this.generateReply(commentText, postIndex, commentIndex);
+    }
 }
+
+// Global variable to access the instance from onclick handlers
+let redditFetcher;
 
 // Initialize the application when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new RedditFetcher();
+    redditFetcher = new RedditFetcher();
 });

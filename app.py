@@ -7,6 +7,8 @@ from flask_cors import CORS
 import praw
 from urllib.parse import urlparse
 import re
+from google import genai
+from google.genai import types
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -24,6 +26,100 @@ client_secret = os.getenv("REDDIT_CLIENT_SECRET", "CK6fVQjjBoF3Qfr7fyYja6FjlSpwm
 user_agent = os.getenv("REDDIT_USER_AGENT", "CommentsFetcher by /u/Real_Instance_7489").strip('"')
 
 logging.info(f"Reddit API Config - Client ID: {client_id[:8]}... User Agent: {user_agent}")
+
+# Initialize Gemini API
+gemini_api_key = "AIzaSyD61kGizgWH_Ipt17Zdi2XftCshSW68FWo"
+rapidapi_key = os.getenv("RAPIDAPI_KEY")
+
+client = genai.Client(api_key=gemini_api_key)
+
+# Sentiment and Emotion Analysis Functions
+def analyze_sentiment(text):
+    """Analyze sentiment using Twinword RapidAPI"""
+    try:
+        url = "https://twinword-sentiment-analysis.p.rapidapi.com/analyze/"
+        querystring = {"text": text}
+        
+        headers = {
+            "x-rapidapi-key": rapidapi_key,
+            "x-rapidapi-host": "twinword-sentiment-analysis.p.rapidapi.com"
+        }
+        
+        response = requests.get(url, headers=headers, params=querystring, timeout=10)
+        response.raise_for_status()
+        
+        return response.json()
+    except Exception as e:
+        logging.error(f"Sentiment analysis failed: {str(e)}")
+        return {"type": "neutral", "score": 0.0}
+
+def analyze_emotion(text):
+    """Analyze emotion using Twinword RapidAPI"""
+    try:
+        url = "https://twinword-emotion-analysis-v1.p.rapidapi.com/analyze/"
+        
+        payload = f"text={text}"
+        headers = {
+            "content-type": "application/x-www-form-urlencoded",
+            "x-rapidapi-key": rapidapi_key,
+            "x-rapidapi-host": "twinword-emotion-analysis-v1.p.rapidapi.com"
+        }
+        
+        response = requests.post(url, data=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        return response.json()
+    except Exception as e:
+        logging.error(f"Emotion analysis failed: {str(e)}")
+        return {"emotions_detected": [{"emotion": "neutral", "score": 0.5}]}
+
+def generate_reply_with_gemini(comment_text, sentiment_data, emotion_data):
+    """Generate a reply using Gemini API based on sentiment and emotion analysis"""
+    try:
+        # Extract key insights from analyses
+        sentiment_type = sentiment_data.get("type", "neutral")
+        sentiment_score = sentiment_data.get("score", 0.0)
+        
+        emotions = emotion_data.get("emotions_detected", [])
+        primary_emotion = emotions[0]["emotion"] if emotions else "neutral"
+        emotion_score = emotions[0]["score"] if emotions else 0.5
+        
+        # Create a comprehensive prompt
+        prompt = f"""
+You are an AI assistant helping to generate thoughtful Reddit replies. Based on the sentiment and emotion analysis below, create an appropriate response to this comment:
+
+Original Comment: "{comment_text}"
+
+Sentiment Analysis:
+- Type: {sentiment_type}
+- Score: {sentiment_score}
+
+Emotion Analysis:
+- Primary Emotion: {primary_emotion}
+- Confidence: {emotion_score}
+
+Instructions:
+1. Match the tone appropriately - if the comment is positive, be encouraging; if negative, be empathetic
+2. Keep the reply conversational and natural, like a real Reddit user would write
+3. Be helpful and add value to the discussion
+4. Keep it concise (2-3 sentences max)
+5. Avoid being overly formal or robotic
+6. If the comment expresses frustration, acknowledge it and offer support
+7. If the comment is excited/happy, share in their enthusiasm
+
+Generate a genuine, helpful reply:
+"""
+        
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+        
+        return response.text.strip() if response.text else "Thanks for sharing your thoughts! That's an interesting perspective."
+        
+    except Exception as e:
+        logging.error(f"Reply generation failed: {str(e)}")
+        return "Thanks for sharing your thoughts! That's an interesting perspective."
 
 # Initialize Reddit API with requests for better control
 def get_reddit_access_token():
@@ -155,7 +251,7 @@ def get_single_post_direct_api(post_id, access_token):
             'User-Agent': user_agent
         }
         params = {
-            'limit': 3,
+            'limit': 5,
             'sort': 'top',
             'raw_json': 1
         }
@@ -173,7 +269,7 @@ def get_single_post_direct_api(post_id, access_token):
             if len(data) > 1 and 'data' in data[1]:
                 comment_data = data[1]['data'].get('children', [])
                 
-                for comment_item in comment_data[:3]:
+                for comment_item in comment_data[:5]:
                     comment = comment_item.get('data', {})
                     if comment.get('body') and comment.get('author'):
                         body = comment.get('body', '')
@@ -182,7 +278,8 @@ def get_single_post_direct_api(post_id, access_token):
                         
                         comments.append({
                             'author': comment.get('author', '[deleted]'),
-                            'body': body
+                            'body': body,
+                            'score': comment.get('score', 0)
                         })
             
             return {
@@ -199,7 +296,7 @@ def get_single_post_direct_api(post_id, access_token):
         logging.error(f"Failed to get single post: {str(e)}")
         return None
 
-def get_post_comments_direct_api(post_id, access_token, limit=3):
+def get_post_comments_direct_api(post_id, access_token, limit=5):
     """Get comments using authenticated API"""
     try:
         if not post_id:
@@ -425,22 +522,58 @@ def fetch_by_url():
                 logging.error(f"Direct API fetch failed: {str(direct_error)}")
         
         # Fallback to PRAW if available
-        try:
-            submission = reddit.submission(url=url)
-            post_data = extract_post_data(submission)
-            
-            if not post_data:
-                return jsonify({'error': 'Failed to extract post data'}), 500
-            
-            return jsonify({'success': True, 'post': post_data})
-        except Exception as praw_error:
-            logging.error(f"PRAW fetch also failed: {str(praw_error)}")
-            return jsonify({'error': 'Failed to fetch Reddit post'}), 500
+        if reddit:
+            try:
+                submission = reddit.submission(url=url)
+                post_data = extract_post_data(submission)
+                
+                if not post_data:
+                    return jsonify({'error': 'Failed to extract post data'}), 500
+                
+                return jsonify({'success': True, 'post': post_data})
+            except Exception as praw_error:
+                logging.error(f"PRAW fetch also failed: {str(praw_error)}")
+        
+        return jsonify({'error': 'Failed to fetch Reddit post'}), 500
 
     except Exception as e:
         logging.error(f"Error in fetch_by_url: {str(e)}")
         return jsonify({'error':
                         f'Failed to fetch Reddit post: {str(e)}'}), 500
+
+
+@app.route('/generate-reply', methods=['POST'])
+def generate_reply():
+    """Generate a reply for a Reddit comment using sentiment analysis and Gemini AI"""
+    try:
+        data = request.get_json()
+        comment_text = data.get('comment_text', '').strip()
+        
+        if not comment_text:
+            return jsonify({'error': 'Comment text is required'}), 400
+        
+        if not rapidapi_key:
+            return jsonify({'error': 'RapidAPI key not configured'}), 500
+            
+        logging.info(f"Generating reply for comment: {comment_text[:100]}...")
+        
+        # Analyze sentiment and emotion
+        sentiment_data = analyze_sentiment(comment_text)
+        emotion_data = analyze_emotion(comment_text)
+        
+        # Generate reply using Gemini
+        reply = generate_reply_with_gemini(comment_text, sentiment_data, emotion_data)
+        
+        return jsonify({
+            'success': True,
+            'reply': reply,
+            'sentiment': sentiment_data,
+            'emotion': emotion_data
+        })
+        
+    except Exception as e:
+        logging.error(f"Error generating reply: {str(e)}")
+        return jsonify({'error': 'Failed to generate reply'}), 500
 
 
 @app.errorhandler(404)
