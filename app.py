@@ -218,15 +218,20 @@ def search_reddit_direct_api(keyword, access_token, limit=10, force_refresh=Fals
             'User-Agent': user_agent
         }
         # Use different sorting based on force_refresh parameter
-        sort_method = 'new' if force_refresh else 'top'
-        time_filter = 'week' if force_refresh else 'month'
+        sort_method = 'new' if force_refresh else 'relevance'  # Changed from 'top' to 'relevance' for better matching
+        time_filter = 'week' if force_refresh else 'year'      # Changed from 'month' to 'year' for better results
+        
+        # Improve search query by adding quotes for better phrase matching
+        search_query = f'"{keyword}"' if ' ' in keyword else keyword
         
         params = {
-            'q': keyword,
+            'q': search_query,
             'sort': sort_method,
             'limit': limit,
             't': time_filter,
-            'raw_json': 1
+            'raw_json': 1,
+            'restrict_sr': 'false',  # Search across all subreddits
+            'include_over_18': 'false'  # Exclude NSFW content
         }
         
         response = requests.get(search_url, headers=headers, params=params, timeout=10)
@@ -253,6 +258,61 @@ def search_reddit_direct_api(keyword, access_token, limit=10, force_refresh=Fals
         return posts
     except Exception as e:
         logging.error(f"Direct API search failed: {str(e)}")
+        return []
+
+def search_reddit_direct_api_fallback(keyword, access_token, limit=10, force_refresh=False):
+    """Fallback search without quotes for better results"""
+    try:
+        search_url = "https://oauth.reddit.com/search"
+        headers = {
+            'Authorization': f'bearer {access_token}',
+            'User-Agent': user_agent
+        }
+        
+        # Use broader search without quotes
+        sort_method = 'new' if force_refresh else 'top'  # Use 'top' for fallback
+        time_filter = 'week' if force_refresh else 'year'
+        
+        params = {
+            'q': keyword,  # No quotes for broader search
+            'sort': sort_method,
+            'limit': limit,
+            't': time_filter,
+            'raw_json': 1,
+            'restrict_sr': 'false',
+            'include_over_18': 'false'
+        }
+        
+        response = requests.get(search_url, headers=headers, params=params, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        posts = []
+        
+        for post_data in data.get('data', {}).get('children', []):
+            post = post_data.get('data', {})
+            
+            # Filter posts by keyword relevance in title
+            title_lower = post.get('title', '').lower()
+            keyword_lower = keyword.lower()
+            
+            # Check if the post title contains relevant keywords
+            if any(word in title_lower for word in keyword_lower.split()):
+                # Get comments for this post
+                comments = get_post_comments_direct_api(post.get('id', ''), access_token)
+                
+                posts.append({
+                    'title': post.get('title', 'No title'),
+                    'author': post.get('author', '[deleted]'),
+                    'score': post.get('score', 0),
+                    'subreddit': post.get('subreddit', 'unknown'),
+                    'url': f"https://reddit.com{post.get('permalink', '')}",
+                    'comments': comments[:3]  # Limit to 3 comments
+                })
+                
+        return posts
+    except Exception as e:
+        logging.error(f"Fallback API search failed: {str(e)}")
         return []
 
 def get_single_post_direct_api(post_id, access_token):
@@ -358,14 +418,18 @@ def search_reddit_public_api(keyword, limit=10, force_refresh=False):
         # Use Reddit's public search API
         search_url = f"https://www.reddit.com/search.json"
         # Use different sorting based on force_refresh parameter
-        sort_method = 'new' if force_refresh else 'top'
-        time_filter = 'week' if force_refresh else 'all'
+        sort_method = 'new' if force_refresh else 'relevance'  # Changed from 'top' to 'relevance'
+        time_filter = 'week' if force_refresh else 'year'      # Changed from 'all' to 'year'
+        
+        # Improve search query for better matching
+        search_query = f'"{keyword}"' if ' ' in keyword else keyword
         
         params = {
-            'q': keyword,
+            'q': search_query,
             'sort': sort_method,
             'limit': limit,
-            't': time_filter
+            't': time_filter,
+            'include_over_18': 'false'
         }
         
         headers = {'User-Agent': 'CommentsFetcher by /u/Real_Instance_7489'}
@@ -475,12 +539,18 @@ def search_keyword():
             logging.info("Using direct Reddit API for search")
             try:
                 posts = search_reddit_direct_api(keyword, reddit_token, 10, force_refresh)
+                
+                # If no posts found with quoted search, try without quotes as fallback
+                if not posts and ' ' in keyword:
+                    logging.info("Trying search without quotes as fallback")
+                    posts = search_reddit_direct_api_fallback(keyword, reddit_token, 10, force_refresh)
+                
                 if posts:
                     return jsonify({
                         'success': True,
                         'posts': posts,
                         'count': len(posts),
-                        'refresh_mode': 'latest' if force_refresh else 'top'
+                        'refresh_mode': 'latest' if force_refresh else 'relevant'
                     })
                 else:
                     return jsonify({'error': f'No posts found for keyword: {keyword}'}), 404
