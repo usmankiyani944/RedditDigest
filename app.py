@@ -29,7 +29,7 @@ logging.info(f"Reddit API Config - Client ID: {client_id[:8]}... User Agent: {us
 
 # Initialize Gemini API
 gemini_api_key = "AIzaSyD61kGizgWH_Ipt17Zdi2XftCshSW68FWo"
-rapidapi_key = os.getenv("RAPIDAPI_KEY")
+rapidapi_key = os.getenv("RAPIDAPI_KEY", "38538528cOmsh7d6f7f60dea082ap107b14jsn2e9c1f2c1b54")
 
 client = genai.Client(api_key=gemini_api_key)
 
