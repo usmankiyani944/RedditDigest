@@ -147,6 +147,12 @@ class RedditFetcher {
             return;
         }
 
+        // Check if input looks like a URL
+        if (keyword.includes('reddit.com') || keyword.startsWith('http')) {
+            this.showError('This looks like a URL. Please use the "Fetch by Thread URL" button instead.');
+            return;
+        }
+
         this.showLoading();
 
         try {
