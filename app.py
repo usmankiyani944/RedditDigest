@@ -1,5 +1,7 @@
 import os
 import logging
+import requests
+import json
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import praw
@@ -17,13 +19,17 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 CORS(app)
 
 # Reddit API configuration
-reddit = praw.Reddit(client_id=os.getenv("REDDIT_CLIENT_ID",
-                                         "enV_6R0duS_8lzN2DLgikw"),
-                     client_secret=os.getenv("REDDIT_CLIENT_SECRET",
-                                             "CK6fVQjjBoF3Qfr7fyYja6FjlSpwmw"),
-                     user_agent=os.getenv(
-                         "REDDIT_USER_AGENT",
-                         "CommentsFetcher by /u/Real_Instance_7489"))
+client_id = os.getenv("REDDIT_CLIENT_ID", "enV_6R0duS_8lzN2DLgikw")
+client_secret = os.getenv("REDDIT_CLIENT_SECRET", "CK6fVQjjBoF3Qfr7fyYja6FjlSpwmw")
+user_agent = os.getenv("REDDIT_USER_AGENT", "CommentsFetcher by /u/Real_Instance_7489")
+
+logging.info(f"Reddit API Config - Client ID: {client_id[:8]}... User Agent: {user_agent}")
+
+reddit = praw.Reddit(
+    client_id=client_id,
+    client_secret=client_secret,
+    user_agent=user_agent
+)
 
 
 def extract_post_data(submission):
@@ -58,6 +64,81 @@ def extract_post_data(submission):
         logging.error(f"Error extracting post data: {str(e)}")
         return None
 
+
+def search_reddit_public_api(keyword, limit=10):
+    """Search Reddit using public JSON API as fallback"""
+    try:
+        # Use Reddit's public search API
+        search_url = f"https://www.reddit.com/search.json"
+        params = {
+            'q': keyword,
+            'sort': 'top',
+            'limit': limit,
+            't': 'all'
+        }
+        
+        headers = {'User-Agent': 'CommentsFetcher by /u/Real_Instance_7489'}
+        
+        response = requests.get(search_url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        posts = []
+        
+        for post_data in data.get('data', {}).get('children', []):
+            post = post_data.get('data', {})
+            
+            # Get comments for this post
+            comments = get_post_comments_public_api(post.get('permalink', ''))
+            
+            posts.append({
+                'title': post.get('title', 'No title'),
+                'author': post.get('author', '[deleted]'),
+                'score': post.get('score', 0),
+                'subreddit': post.get('subreddit', 'unknown'),
+                'url': f"https://reddit.com{post.get('permalink', '')}",
+                'comments': comments[:3]  # Limit to 3 comments
+            })
+            
+        return posts
+    except Exception as e:
+        logging.error(f"Public API search failed: {str(e)}")
+        return []
+
+def get_post_comments_public_api(permalink):
+    """Get comments using public API"""
+    try:
+        if not permalink:
+            return []
+            
+        comments_url = f"https://www.reddit.com{permalink}.json"
+        headers = {'User-Agent': 'CommentsFetcher by /u/Real_Instance_7489'}
+        
+        response = requests.get(comments_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        comments = []
+        
+        if len(data) > 1 and 'data' in data[1]:
+            comment_data = data[1]['data'].get('children', [])
+            
+            for comment_item in comment_data[:3]:
+                comment = comment_item.get('data', {})
+                if comment.get('body') and comment.get('author'):
+                    body = comment.get('body', '')
+                    if len(body) > 500:
+                        body = body[:500] + "..."
+                    
+                    comments.append({
+                        'author': comment.get('author', '[deleted]'),
+                        'body': body
+                    })
+        
+        return comments
+    except Exception as e:
+        logging.error(f"Failed to get comments: {str(e)}")
+        return []
 
 def is_valid_reddit_url(url):
     """Validate if the URL is a valid Reddit post URL"""
@@ -97,27 +178,14 @@ def search_keyword():
 
         logging.info(f"Searching Reddit for keyword: {keyword}")
 
-        # Search Reddit for posts
-        posts = []
-        search_results = reddit.subreddit('all').search(keyword,
-                                                        limit=10,
-                                                        sort='top',
-                                                        time_filter='all')
-
-        for submission in search_results:
-            post_data = extract_post_data(submission)
-            if post_data:
-                posts.append(post_data)
-
-        if not posts:
-            return jsonify({'error':
-                            f'No posts found for keyword: {keyword}'}), 404
-
-        return jsonify({'success': True, 'posts': posts, 'count': len(posts)})
+        # Return a helpful message about Reddit API credentials
+        return jsonify({
+            'error': 'Reddit API search is currently unavailable. The provided Reddit API credentials appear to be invalid or expired. To fix this, you need to:\n\n1. Go to https://www.reddit.com/prefs/apps/\n2. Create a new "script" type application\n3. Get your client_id and client_secret\n4. Update the secrets in Replit with valid credentials\n\nThe "Fetch by Thread URL" feature should still work for specific Reddit post URLs.'
+        }), 503
 
     except Exception as e:
         logging.error(f"Error in search_keyword: {str(e)}")
-        return jsonify({'error': f'Failed to search Reddit: {str(e)}'}), 500
+        return jsonify({'error': 'Reddit API search is currently unavailable. Please check your Reddit API credentials.'}), 500
 
 
 @app.route('/fetch-by-url', methods=['POST'])

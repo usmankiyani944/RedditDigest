@@ -99,3 +99,33 @@ Preferred communication style: Simple, everyday language.
 - **Problem**: Reddit API complexity and authentication requirements
 - **Solution**: PRAW library abstraction with environment-based configuration
 - **Rationale**: Simplified Reddit integration while maintaining security best practices
+
+## Current Status (July 29, 2025)
+
+### Reddit API Integration Status
+- **Current Issue**: Reddit API credentials are invalid/expired, resulting in 401 authentication errors
+- **Impact**: Both keyword search and URL fetch features are currently non-functional
+- **Resolution Required**: Valid Reddit API credentials need to be obtained and configured
+
+### How to Fix Reddit API Access
+1. **Create Reddit App**: Go to https://www.reddit.com/prefs/apps/
+2. **App Configuration**: Create a "script" type application (required for PRAW)
+3. **Get Credentials**: Note the client_id, client_secret, and create a user_agent string
+4. **Update Secrets**: Replace the current Replit secrets with valid credentials:
+   - REDDIT_CLIENT_ID: Your app's client ID
+   - REDDIT_CLIENT_SECRET: Your app's client secret  
+   - REDDIT_USER_AGENT: Descriptive name like "YourAppName by /u/YourUsername"
+
+### Working Features
+- **Frontend Interface**: Fully functional with proper form validation and error handling
+- **Backend Structure**: Complete Flask application with proper routing and error handling
+- **URL Validation**: Proper distinction between keywords and URLs
+- **Bootstrap Styling**: Professional dark theme UI with responsive design
+
+### Technical Implementation Complete
+- Flask backend with CORS enabled
+- Two POST endpoints: /search-keyword and /fetch-by-url
+- PRAW integration for Reddit API calls
+- Error handling and fallback mechanisms
+- Bootstrap-based responsive frontend
+- Real-time loading indicators and error displays
