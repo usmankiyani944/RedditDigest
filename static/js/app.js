@@ -63,6 +63,12 @@ class RedditFetcher {
             const refreshText = refreshMode === 'latest' ? ' (Latest Results)' : '';
             this.resultsTitle.innerHTML = `<i class="fas fa-list me-2"></i>Search Results${refreshText}`;
             this.resultsCount.textContent = `Found ${data.count} posts${refreshMode === 'latest' ? ' from this week' : ''}`;
+            
+            // Display ChatGPT analysis if available
+            if (data.chatgpt_analysis) {
+                this.renderChatGPTAnalysis(data.chatgpt_analysis);
+            }
+            
             this.renderPosts(data.posts);
         } else {
             this.resultsTitle.innerHTML = '<i class="fas fa-link me-2"></i>Thread Details';
@@ -71,6 +77,33 @@ class RedditFetcher {
         }
         
         this.resultsContainer.style.display = 'block';
+    }
+
+    renderChatGPTAnalysis(analysis) {
+        const analysisContainer = document.createElement('div');
+        analysisContainer.className = 'alert alert-info mb-4';
+        analysisContainer.innerHTML = `
+            <div class="d-flex align-items-center mb-3">
+                <i class="fas fa-robot me-2"></i>
+                <strong>ChatGPT Analysis</strong>
+                <span class="badge bg-success ms-2">Reddit cited as source</span>
+            </div>
+            <div class="analysis-content">
+                ${this.formatAnalysisText(analysis.analysis)}
+            </div>
+            <div class="mt-3 small text-muted">
+                <i class="fas fa-chart-bar me-1"></i>
+                Analyzed ${analysis.reddit_posts_analyzed} Reddit posts for query: "${analysis.query}"
+            </div>
+        `;
+        
+        // Insert at the beginning of posts container
+        this.postsContainer.appendChild(analysisContainer);
+    }
+
+    formatAnalysisText(text) {
+        // Convert line breaks to HTML breaks and preserve formatting
+        return text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>').replace(/^/, '<p>').replace(/$/, '</p>');
     }
 
     renderPosts(posts) {

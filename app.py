@@ -7,8 +7,8 @@ from flask_cors import CORS
 import praw
 from urllib.parse import urlparse
 import re
-from google import genai
-from google.genai import types
+import google.generativeai as genai
+from openai import OpenAI
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -31,7 +31,11 @@ logging.info(f"Reddit API Config - Client ID: {client_id[:8]}... User Agent: {us
 gemini_api_key = "AIzaSyD61kGizgWH_Ipt17Zdi2XftCshSW68FWo"
 rapidapi_key = os.getenv("RAPIDAPI_KEY", "38538528cOmsh7d6f7f60dea082ap107b14jsn2e9c1f2c1b54")
 
-client = genai.Client(api_key=gemini_api_key)
+genai.configure(api_key=gemini_api_key)
+
+# Initialize OpenAI API
+openai_api_key = os.getenv("OPENAI_API_KEY")
+openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 # Sentiment and Emotion Analysis Functions
 def analyze_sentiment(text):
@@ -72,6 +76,73 @@ def analyze_emotion(text):
     except Exception as e:
         logging.error(f"Emotion analysis failed: {str(e)}")
         return {"emotions_detected": [{"emotion": "neutral", "score": 0.5}]}
+
+def analyze_with_chatgpt(search_query, reddit_posts):
+    """Analyze search results with ChatGPT and mark Reddit as resource"""
+    if not openai_client:
+        logging.error("OpenAI API key not configured")
+        return None
+    
+    try:
+        # Extract relevant content from Reddit posts
+        reddit_content = []
+        for post in reddit_posts:
+            content_summary = f"Title: {post.get('title', '')}\nSubreddit: r/{post.get('subreddit', '')}\nUpvotes: {post.get('score', 0)}\n"
+            if post.get('comments'):
+                top_comments = post['comments'][:3]  # Get top 3 comments
+                content_summary += "Top Comments:\n"
+                for comment in top_comments:
+                    content_summary += f"- {comment.get('body', '')[:200]}...\n"
+            reddit_content.append(content_summary)
+        
+        # Create comprehensive prompt for ChatGPT
+        reddit_sources = "\n\n".join(reddit_content)
+        
+        prompt = f"""Based on the following search query: "{search_query}"
+
+Here are relevant Reddit discussions and insights I found:
+
+{reddit_sources}
+
+Please analyze this information and provide:
+1. A comprehensive answer to the search query
+2. Key insights from the Reddit community
+3. Popular opinions and recommendations
+4. Any tools, services, or solutions mentioned
+
+Please cite Reddit as a primary source for community insights and real user experiences in your analysis."""
+
+        # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
+        # do not change this unless explicitly requested by the user
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system", 
+                    "content": "You are an AI assistant that analyzes Reddit discussions to provide comprehensive insights. Always cite Reddit as a valuable source for community opinions and real user experiences."
+                },
+                {
+                    "role": "user", 
+                    "content": prompt
+                }
+            ],
+            max_tokens=1000,
+            temperature=0.7
+        )
+        
+        analysis = response.choices[0].message.content
+        
+        logging.info(f"ChatGPT analysis completed for query: {search_query}")
+        return {
+            "analysis": analysis,
+            "sources_used": ["Reddit"],
+            "reddit_posts_analyzed": len(reddit_posts),
+            "query": search_query
+        }
+        
+    except Exception as e:
+        logging.error(f"ChatGPT analysis failed: {str(e)}")
+        return None
 
 def generate_reply_with_gemini(comment_text, sentiment_data, emotion_data, brand_name=None, is_main_post=False):
     """Generate a reply using Gemini API based on sentiment and emotion analysis"""
@@ -119,10 +190,8 @@ Instructions:
 Generate a genuine, helpful reply:
 """
         
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
+        model = genai.GenerativeModel("gemini-pro")
+        response = model.generate_content(prompt)
         
         return response.text.strip() if response.text else "Thanks for sharing your thoughts! That's an interesting perspective."
         
@@ -563,7 +632,8 @@ def search_keyword():
 
         logging.info(f"Searching Reddit for keyword: {keyword} (force_refresh: {force_refresh})")
 
-        # Use direct Reddit API with requests since PRAW is having issues
+        # Try direct Reddit API first, then public API as fallback
+        posts = []
         if reddit_token:
             logging.info("Using direct Reddit API for search")
             try:
@@ -573,23 +643,37 @@ def search_keyword():
                 if not posts and ' ' in keyword:
                     logging.info("Trying search without quotes as fallback")
                     posts = search_reddit_direct_api_fallback(keyword, reddit_token, 10, force_refresh)
-                
-                if posts:
-                    return jsonify({
-                        'success': True,
-                        'posts': posts,
-                        'count': len(posts),
-                        'refresh_mode': 'latest' if force_refresh else 'relevant'
-                    })
-                else:
-                    return jsonify({'error': f'No posts found for keyword: {keyword}'}), 404
             except Exception as direct_error:
                 logging.error(f"Direct API search failed: {str(direct_error)}")
         
-        # Return error if no working method
-        return jsonify({
-            'error': 'Reddit API search is currently unavailable. Please try again later.'
-        }), 503
+        # If direct API failed, try public API
+        if not posts:
+            logging.info("Trying public Reddit API as fallback")
+            try:
+                posts = search_reddit_public_api(keyword, 10)
+            except Exception as public_error:
+                logging.error(f"Public API search also failed: {str(public_error)}")
+        
+        if posts:
+            # Analyze with ChatGPT if OpenAI is available
+            chatgpt_analysis = None
+            if openai_client:
+                chatgpt_analysis = analyze_with_chatgpt(keyword, posts)
+            
+            response_data = {
+                'success': True,
+                'posts': posts,
+                'count': len(posts),
+                'refresh_mode': 'latest' if force_refresh else 'relevant'
+            }
+            
+            # Add ChatGPT analysis if available
+            if chatgpt_analysis:
+                response_data['chatgpt_analysis'] = chatgpt_analysis
+            
+            return jsonify(response_data)
+        else:
+            return jsonify({'error': f'No posts found for keyword: {keyword}'}), 404
 
     except Exception as e:
         logging.error(f"Error in search_keyword: {str(e)}")
@@ -659,6 +743,40 @@ def fetch_by_url():
         return jsonify({'error':
                         f'Failed to fetch Reddit post: {str(e)}'}), 500
 
+
+@app.route('/analyze-chatgpt', methods=['POST'])
+def analyze_chatgpt_endpoint():
+    """Test endpoint for ChatGPT analysis with sample data"""
+    try:
+        data = request.get_json()
+        search_query = data.get('search_query', '').strip()
+        reddit_posts = data.get('reddit_posts', [])
+        
+        if not search_query or not reddit_posts:
+            return jsonify({'error': 'search_query and reddit_posts are required'}), 400
+        
+        if not openai_client:
+            return jsonify({'error': 'OpenAI API key not configured'}), 500
+        
+        logging.info(f"Testing ChatGPT analysis for query: {search_query}")
+        
+        # Analyze with ChatGPT
+        analysis = analyze_with_chatgpt(search_query, reddit_posts)
+        
+        if analysis:
+            return jsonify({
+                'success': True,
+                'analysis': analysis['analysis'],
+                'sources_used': analysis['sources_used'],
+                'reddit_posts_analyzed': analysis['reddit_posts_analyzed'],
+                'query': analysis['query']
+            })
+        else:
+            return jsonify({'error': 'ChatGPT analysis failed'}), 500
+        
+    except Exception as e:
+        logging.error(f"Error in ChatGPT analysis endpoint: {str(e)}")
+        return jsonify({'error': 'Failed to analyze with ChatGPT'}), 500
 
 @app.route('/generate-reply', methods=['POST'])
 def generate_reply():
