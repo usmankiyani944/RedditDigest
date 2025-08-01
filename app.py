@@ -21,11 +21,11 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 CORS(app)
 
 # Reddit API configuration
-client_id = os.getenv("REDDIT_CLIENT_ID", "enV_6R0duS_8lzN2DLgikw").strip('"')
-client_secret = os.getenv("REDDIT_CLIENT_SECRET", "CK6fVQjjBoF3Qfr7fyYja6FjlSpwmw").strip('"')
-user_agent = os.getenv("REDDIT_USER_AGENT", "CommentsFetcher by /u/Real_Instance_7489").strip('"')
+reddit_client_id = os.getenv("REDDIT_CLIENT_ID", "enV_6R0duS_8lzN2DLgikw").strip('"')
+reddit_client_secret = os.getenv("REDDIT_CLIENT_SECRET", "CK6fVQjjBoF3Qfr7fyYja6FjlSpwmw").strip('"')
+reddit_user_agent = os.getenv("REDDIT_USER_AGENT", "CommentsFetcher by /u/Real_Instance_7489").strip('"')
 
-logging.info(f"Reddit API Config - Client ID: {client_id[:8]}... User Agent: {user_agent}")
+logging.info(f"Reddit API Config - Client ID: {reddit_client_id[:8]}... User Agent: {reddit_user_agent}")
 
 # Initialize Gemini API
 gemini_api_key = "AIzaSyD61kGizgWH_Ipt17Zdi2XftCshSW68FWo"
@@ -205,13 +205,13 @@ def get_reddit_access_token():
     try:
         auth_url = "https://www.reddit.com/api/v1/access_token"
         auth_data = {"grant_type": "client_credentials"}
-        auth_headers = {"User-Agent": user_agent}
+        auth_headers = {"User-Agent": reddit_user_agent}
         
         response = requests.post(
             auth_url,
             data=auth_data,
             headers=auth_headers,
-            auth=(client_id, client_secret),
+            auth=(reddit_client_id, reddit_client_secret),
             timeout=10
         )
         
@@ -235,9 +235,9 @@ else:
 # Still initialize PRAW for compatibility
 try:
     reddit = praw.Reddit(
-        client_id=client_id,
-        client_secret=client_secret,
-        user_agent=user_agent,
+        client_id=reddit_client_id,
+        client_secret=reddit_client_secret,
+        user_agent=reddit_user_agent,
         check_for_async=False
     )
 except Exception as reddit_error:
@@ -284,7 +284,7 @@ def search_reddit_direct_api(keyword, access_token, limit=10, force_refresh=Fals
         search_url = "https://oauth.reddit.com/search"
         headers = {
             'Authorization': f'bearer {access_token}',
-            'User-Agent': user_agent
+            'User-Agent': reddit_user_agent
         }
         # Use different sorting based on force_refresh parameter
         sort_method = 'new' if force_refresh else 'relevance'  # Changed from 'top' to 'relevance' for better matching
@@ -353,7 +353,7 @@ def search_reddit_direct_api_fallback(keyword, access_token, limit=10, force_ref
         search_url = "https://oauth.reddit.com/search"
         headers = {
             'Authorization': f'bearer {access_token}',
-            'User-Agent': user_agent
+            'User-Agent': reddit_user_agent
         }
         
         # Use broader search without quotes
@@ -419,7 +419,7 @@ def get_single_post_direct_api(post_id, access_token):
         post_url = f"https://oauth.reddit.com/comments/{post_id}"
         headers = {
             'Authorization': f'bearer {access_token}',
-            'User-Agent': user_agent
+            'User-Agent': reddit_user_agent
         }
         params = {
             'limit': 10,
@@ -476,7 +476,7 @@ def get_post_comments_direct_api(post_id, access_token, limit=10):
         comments_url = f"https://oauth.reddit.com/comments/{post_id}"
         headers = {
             'Authorization': f'bearer {access_token}',
-            'User-Agent': user_agent
+            'User-Agent': reddit_user_agent
         }
         params = {
             'limit': limit,
